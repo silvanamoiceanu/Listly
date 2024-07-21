@@ -1,92 +1,84 @@
 import imaplib
 import email
-from email.header import decode_header
-import datetime
-import csv
-import re
+# import pandas as pd
+from multion.client import MultiOn
+import agentops
 
-def connect_to_email(email_address, password, imap_server):
-    mail = imaplib.IMAP4_SSL(imap_server)
-    mail.login(email_address, password)
-    return mail
+multion = MultiOn(api_key="79d190a575e242eb9af728c72d5743fd", agentops_api_key='77a728a1-32af-41f5-bd6f-dd033fdec1bb')
 
-def get_emails(mail, folder="INBOX", limit=100):
-    mail.select(folder)
-    _, search_data = mail.search(None, "ALL")
-    email_ids = search_data[0].split()
-    return email_ids[-limit:]  # Get the latest 'limit' emails
+browse = multion.retrieve(
+    cmd="Find the latest emails with the sender subject and time sent and prioritize them",
+    url="https://mail.google.com/mail/u/0/#inbox",
+    local=True,
+    fields=['sender, subject, time sent']
+)
 
-def decode_email_subject(subject):
-    decoded, encoding = decode_header(subject)[0]
-    if isinstance(decoded, bytes):
-        return decoded.decode(encoding or 'utf-8')
-    return decoded
+print("Browse response:", browse)
 
-def calculate_priority(subject, sender, date):
-    priority = 0
+# click into each email 
+# retrieve the text that has highest priority 
+# identify the keywords and reorder
+
+def fetch_emails():
+    mail = imaplib.IMAP4_SSL('imap.gmail.com')
+    mail.login('hackathonemail8@gmail.com', 'hackathonlogin!')
+    mail.select('inbox')
     
-    # Check for urgent keywords in subject
-    urgent_keywords = ['urgent', 'important', 'asap', 'deadline']
-    if any(keyword in subject.lower() for keyword in urgent_keywords):
-        priority += 5
+    status, data = mail.search(None, 'ALL')
+    email_ids = data[0].split()
     
-    # Prioritize recent emails
-    days_old = (datetime.datetime.now() - date).days
-    if days_old == 0:
-        priority += 3
-    elif days_old <= 2:
-        priority += 2
-    elif days_old <= 7:
-        priority += 1
-    
-    # Prioritize based on sender (example: prioritize emails from your boss)
-    if 'boss@company.com' in sender:
-        priority += 3
-    
-    return priority
-
-def process_emails(mail, email_ids):
-    prioritized_emails = []
+    emails = []
     
     for email_id in email_ids:
-        _, msg_data = mail.fetch(email_id, "(RFC822)")
-        email_body = msg_data[0][1]
-        email_message = email.message_from_bytes(email_body)
+        status, data = mail.fetch(email_id, '(RFC822)')
+        raw_email = data[0][1]
+        msg = email.message_from_bytes(raw_email)
         
-        subject = decode_email_subject(email_message["subject"])
-        sender = email_message["from"]
-        date = datetime.datetime.strptime(email_message["date"], "%a, %d %b %Y %H:%M:%S %z")
+        email_data = {
+            'from': msg['from'],
+            'subject': msg['subject'],
+            'date': msg['date'],
+            'body': ''
+        }
         
-        priority = calculate_priority(subject, sender, date)
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == 'text/plain':
+                    email_data['body'] += part.get_payload(decode=True).decode()
+        else:
+            email_data['body'] = msg.get_payload(decode=True).decode()
         
-        prioritized_emails.append({
-            "subject": subject,
-            "sender": sender,
-            "date": date.strftime("%Y-%m-%d %H:%M:%S"),
-            "priority": priority
-        })
-    
-    return sorted(prioritized_emails, key=lambda x: x["priority"], reverse=True)
-
-def save_to_csv(prioritized_emails, filename="email_priorities.csv"):
-    with open(filename, "w", newline="", encoding="utf-8") as csvfile:
-        fieldnames = ["subject", "sender", "date", "priority"]
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        for email in prioritized_emails:
-            writer.writerow(email)
-
-def main():
-    email_address = "hackathonemail8@gmail.com"
-    password = "UxxQF2yy"
-    imap_server = "imap.example.com"
-    
-    mail = connect_to_email(email_address, password, imap_server)
-    email_ids = get_emails(mail)
-    prioritized_emails = process_emails(mail, email_ids)
-    save_to_csv(prioritized_emails)
+        emails.append(email_data)
     
     mail.logout()
+    return emails
 
-if __name__ == "__main__":
-    main()
+def prioritize_emails(emails):
+    priority_list = []
+    
+    for email in emails:
+        priority_score = 0
+        
+        if 'urgent' in email['subject'].lower():
+            priority_score += 10
+        if 'boss@example.com' in email['from']:
+            priority_score += 5
+        
+        priority_list.append({
+            'from': email['from'],
+            'subject': email['subject'],
+            'date': email['date'],
+            'body': email['body'],
+            'priority_score': priority_score
+        })
+    
+    priority_list = sorted(priority_list, key=lambda x: x['priority_score'], reverse=True)
+    return priority_list
+
+def generate_csv(priority_list, file_path='email_priority_list.csv'):
+    # df = DataFrame(priority_list)
+    df.to_csv(file_path, index=False)
+
+# emails = fetch_emails()
+# priority_list = prioritize_emails(emails)
+# generate_csv(priority_list)
