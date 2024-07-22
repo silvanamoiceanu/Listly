@@ -4,7 +4,7 @@ import email
 from multion.client import MultiOn
 import agentops
 
-multion = MultiOn(api_key="79d190a575e242eb9af728c72d5743fd", agentops_api_key='77a728a1-32af-41f5-bd6f-dd033fdec1bb')
+multion = MultiOn(api_key="xxx", agentops_api_key="xxx")
 
 browse = multion.retrieve(
     cmd="Find the latest emails with the sender subject and time sent and prioritize them",
